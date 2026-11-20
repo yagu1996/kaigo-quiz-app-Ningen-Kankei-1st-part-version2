@@ -157,7 +157,7 @@ QUESTIONS = [
       "サヘラントロプス",
       "アウストラロピテクス・アファレンシス",
       "ホモ・エレクトス",
-      "ネアンデルタール<ruby>人<rt>ひと</rt></ruby>"
+      "ネアンデルタール<ruby>人<rt>じん</rt></ruby>"
     ],
     "answer": 2,
     "exp": "<ruby>約<rt>やく</rt></ruby>400<ruby>万<rt>まん</rt></ruby>〜300<ruby>万<rt>まん</rt></ruby><ruby>年<rt>ねん</rt></ruby><ruby>前<rt>まえ</rt></ruby>にはアウストラロピテクス・アファレンシスなどの<ruby>猿人<rt>えんじん</rt></ruby>が<ruby>生息<rt>せいそく</rt></ruby>していました。"
