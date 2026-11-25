@@ -8,22 +8,35 @@ st.set_page_config(
     layout="centered"
 )
 
-# 明朝体および見やすいレイアウト用カスタムCSS
+# ルビ表示制御（セッション状態の初期化）
+if "show_ruby" not in st.session_state:
+    st.session_state.show_ruby = True
+
+# 高コントラスト＆視認性重視カスタムCSS（アイコン文字化けバグ対策完全版）
 st.markdown("""
 <style>
   /* 全体の背景と基本文字色を強制的に固定（ダークモード干渉を防止） */
   .stApp {
-    background-color: #f8fafc !important; /* 明るい清潔な背景色 */
-    color: #111827 !important; /* 極濃テキスト */
+    background-color: #f8fafc !important;
+    color: #111827 !important;
   }
 
-  /* フォント指定：明朝体 */
-  * {
-    font-family: "Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", "Source Han Serif", serif !important;
+  /* フォント指定：アイコン類を除外して本文・入力欄・見出しに明朝体を適用 */
+  body, p, span, div, label, input, button, select, textarea, h1, h2, h3, h4, h5, h6 {
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", "MS Mincho", "Source Han Serif", serif;
   }
 
-  /* 一般テキスト、見出し、ラジオボタンの文字色をくっきり黒に固定 */
-  h1, h2, h3, h4, p, span, label, div {
+  /* アイコンフォントの保護（.arrow_right などのリガチャ露出・文字化けを防止） */
+  [data-testid*="Icon"], 
+  .material-symbols-rounded,
+  .stExpander span[data-testid="stExpanderToggleIcon"] {
+    font-family: "Material Symbols Rounded", "Source Sans Pro", sans-serif !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+  }
+
+  /* 一般テキスト、見出しの文字色を純黒・極濃色に固定 */
+  h1, h2, h3, h4, p, label, .q-title {
     color: #0f172a !important;
   }
 
@@ -34,9 +47,9 @@ st.markdown("""
     font-weight: 500;
   }
   rt {
-    font-size: 0.65em !important; /* 少し大きくして潰れを防止 */
-    font-weight: bold !important;  /* 細くかすれないよう太字化 */
-    color: #1e3a8a !important;    /* ふりがなを視認しやすい濃紺色に設定 */
+    font-size: 0.65em !important;
+    font-weight: bold !important;
+    color: #1e3a8a !important;
     line-height: 1.2 !important;
   }
 
@@ -55,14 +68,14 @@ st.markdown("""
     background-color: #ffffff !important;
     border: 2px solid #64748b !important;
     border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 18px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
   }
 
   /* 問題カード：白背景にくっきりした濃色の枠線 */
   .q-card {
     background-color: #ffffff !important;
-    border: 1.5px solid #64748b !important; /* 枠線を濃くして境界を明瞭化 */
+    border: 1.5px solid #64748b !important;
     border-radius: 8px;
     padding: 16px 18px;
     margin-bottom: 16px;
@@ -102,6 +115,18 @@ st.markdown("""
     font-weight: bold !important;
   }
 
+  /* 単元タグ */
+  .tag {
+    display: inline-block;
+    background-color: #e2e8f0;
+    color: #1e3a8a;
+    font-size: 0.8rem;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+  }
+
   /* 採点バナー */
   .score-badge {
     text-align: center;
@@ -110,6 +135,13 @@ st.markdown("""
     border-radius: 8px;
     padding: 18px;
     margin: 20px 0;
+  }
+
+  /* アコーディオンのアイコン重なり防止 */
+  .stExpander details summary {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
   }
 </style>
 """, unsafe_allow_html=True)
@@ -120,7 +152,7 @@ st.markdown("""
 <ruby>人間関係<rt>にんげんかんけい</rt></ruby>とコミュニケーション a<ruby>前半<rt>ぜんはん</rt></ruby>
 </h2>
 <p style='text-align: center; font-size: 0.92rem; color: #475569;'>
-練習問題アプリ（全70問・全漢字ルビ付き）｜テキストファイル提出＆コピーペースト提出対応
+練習問題アプリ（全70問・全漢字ふりがな付き）｜テキストファイル提出＆コピーペースト対応
 </p>
 """, unsafe_allow_html=True)
 
@@ -133,10 +165,9 @@ with col1:
 with col2:
     s_id = st.text_input("学籍番号", placeholder='例"9259999"')
 with col3:
-    s_name = st.text_input("名前（ニックネーム）", placeholder='例"Your nickname"')
+    s_name = st.text_input("名前（氏名）", placeholder='例"ヤグラ タロウ"')
 st.markdown("</div>", unsafe_allow_html=True)
 
-# 全70問のデータ（全漢字ルビ付き）
 QUESTIONS = [
   {
     "id": 1,
@@ -980,45 +1011,98 @@ QUESTIONS = [
   }
 ]
 
-# セッション状態の初期化
+# 単元・問題群の定義（識別記号タグ付き）
+SECTIONS = {
+    "all": {
+        "label": "全70問を一括表示（模擬試験モード）",
+        "tag": "ALL_全70問",
+        "range_desc": "全問一括（問01〜問70：総合演習）",
+        "range": (0, 70)
+    },
+    "b1": {
+        "label": "第1群: 人類の進化とケアの起源（問1〜10）",
+        "tag": "B1_問01-10",
+        "range_desc": "第1群 （問01〜問10：人類の進化とケアの起源）",
+        "range": (0, 10)
+    },
+    "b2": {
+        "label": "第2群: 初期人類・ケアの象徴と自己理解（問11〜20）",
+        "tag": "B2_問11-20",
+        "range_desc": "第2群 （問11〜問20：初期人類・ケアの象徴と自己理解）",
+        "range": (10, 20)
+    },
+    "b3": {
+        "label": "第3群: 先天的・後天的要素とジョハリの窓（問21〜30）",
+        "tag": "B3_問21-30",
+        "range_desc": "第3群 （問21〜問30：先天的・後天的要素とジョハリの窓）",
+        "range": (20, 30)
+    },
+    "b4": {
+        "label": "第4群: 自己覚知・自己開示・ラポール（問31〜40）",
+        "tag": "B4_問31-40",
+        "range_desc": "第4群 （問31〜問40：自己覚知・自己開示・ラポール）",
+        "range": (30, 40)
+    },
+    "b5": {
+        "label": "第5群: 変化の可能性・多様性と人間の尊厳（問41〜50）",
+        "tag": "B5_問41-50",
+        "range_desc": "第5群 （問41〜問50：変化の可能性・多様性と人間の尊厳）",
+        "range": (40, 50)
+    },
+    "b6": {
+        "label": "第6群: 福祉理念・自立の多面性とICF（問51〜60）",
+        "tag": "B6_問51-60",
+        "range_desc": "第6群 （問51〜問60：福祉理念・自立の多面性とICF）",
+        "range": (50, 60)
+    },
+    "b7": {
+        "label": "第7群: コミュニケーション技術と対人距離（問61〜70）",
+        "tag": "B7_問61-70",
+        "range_desc": "第7群 （問61〜問70：コミュニケーション技術と対人距離）",
+        "range": (60, 70)
+    }
+}
+
+# 2. 出題ナビゲーション & 表示設定
+st.markdown("<div class='nav-box'>", unsafe_allow_html=True)
+st.markdown("### 🎯 出題モードと表示設定")
+col_nav1, col_nav2 = st.columns([2.2, 1])
+with col_nav1:
+    view_mode = st.selectbox(
+        "取り組み方を選択してください（切り替えても回答内容は保持されます）:",
+        options=list(SECTIONS.keys()),
+        format_func=lambda x: SECTIONS[x]["label"]
+    )
+with col_nav2:
+    st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+    show_ruby = st.checkbox("ふりがな（ルビ）を表示する", value=True)
+
+# ルビ非表示時の動的CSS
+if not show_ruby:
+    st.markdown("<style>rt { display: none !important; }</style>", unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# 選択範囲の問題を抽出
+sec_info = SECTIONS[view_mode]
+start_idx, end_idx = sec_info["range"]
+display_questions = QUESTIONS[start_idx:end_idx]
+
+# セッション状態での回答管理
 for q in QUESTIONS:
     key = f"ans_{q['id']}"
     if key not in st.session_state:
         st.session_state[key] = None
 
-# 表示モード選択（全問一括 or 10問ずつ分割）
-st.markdown("<div class='nav-box'>", unsafe_allow_html=True)
-view_mode = st.radio(
-    "📖 出題の表示方法を選択してください:",
-    options=["10問ずつ分割表示（推奨）", "全70問を一括表示"],
-    horizontal=True
-)
-
-if view_mode == "10問ずつ分割表示（推奨）":
-    batch_options = [
-        "第 1問 〜 第10問 （人類の進化とケアの起源）",
-        "第11問 〜 第20問 （初期人類・ケアの象徴と自己理解）",
-        "第21問 〜 第30問 （先天的・後天的要素とジョハリの窓）",
-        "第31問 〜 第40問 （自己覚知・自己開示・ラポール）",
-        "第41問 〜 第50問 （変化の可能性・多様性と人間の尊厳）",
-        "第51問 〜 第60問 （福祉理念・自立の多面性とICF）",
-        "第61問 〜 第70問 （コミュニケーション技術と対人距離）"
-    ]
-    selected_batch = st.selectbox("取り組む問題群を選択してください:", batch_options)
-    batch_idx = batch_options.index(selected_batch)
-    start_i = batch_idx * 10
-    end_i = start_i + 10
-    display_questions = QUESTIONS[start_i:end_i]
-else:
-    display_questions = QUESTIONS
-st.markdown("</div>", unsafe_allow_html=True)
-
-# 解答進捗バー
+# 解答進捗状況の表示
 answered_count = sum(1 for q in QUESTIONS if st.session_state.get(f"ans_{q['id']}") is not None)
-st.progress(answered_count / len(QUESTIONS))
-st.caption(f"現在の解答進捗: {answered_count} / {len(QUESTIONS)} 問 完了")
+progress_pct = int((answered_count / 70) * 100)
+st.progress(answered_count / 70)
+st.caption(f"全70問の解答進捗: **{answered_count} / 70 問 解答済み** ({progress_pct}%)")
 
-# 問題表示と解答入力
+st.markdown(f"### ✍️ 問題一覧（{sec_info['label']}：全 {len(display_questions)} 問）")
+
+# 問題のレンダリング
 for q in display_questions:
     q_num = q["id"]
     key = f"ans_{q_num}"
@@ -1041,27 +1125,31 @@ for q in display_questions:
         st.session_state[key] = selected_val
     st.markdown("</div>", unsafe_allow_html=True)
 
-# 採点と提出用テキストの生成
+# 採点と提出
 st.markdown("---")
-if st.button("📊 採点して提出用テキストを作成する", type="primary", use_container_width=True):
+btn_label = f"📊 選択中の範囲（{sec_info['tag']}）を採点して提出用テキストを作成する" if view_mode != "all" else "📊 全70問を採点して提出用テキストを作成する"
+
+if st.button(btn_label, type="primary", use_container_width=True):
     if not s_class.strip() or not s_id.strip() or not s_name.strip():
-        st.error("⚠️ 「クラス名」「学籍番号」「名前」をすべて入力してください。")
+        st.error("⚠️ 最上部の「クラス名」「学籍番号」「名前」をすべて入力してください。")
     else:
-        score = 0
-        unanswered = 0
+        # 採点対象：選択中の問題群
+        target_questions = display_questions
+        target_score = 0
+        target_unanswered = 0
         detail_lines = []
         
-        for q in QUESTIONS:
+        for q in target_questions:
             q_num = q["id"]
             u_ans = st.session_state.get(f"ans_{q_num}")
             is_correct = (u_ans == q["answer"])
             
             if u_ans is None:
-                unanswered += 1
+                target_unanswered += 1
                 status_str = "未回答 ×"
                 ans_str = "未"
             elif is_correct:
-                score += 1
+                target_score += 1
                 status_str = "正解 ○"
                 ans_str = str(u_ans)
             else:
@@ -1070,46 +1158,46 @@ if st.button("📊 採点して提出用テキストを作成する", type="prim
                 
             detail_lines.append(f"問{q_num:02d}: あなたの解答 [{ans_str}] / 正解 [{q['answer']}] -> {status_str}")
             
-        total_q = len(QUESTIONS)
-        pct = round((score / total_q) * 100)
+        target_total = len(target_questions)
+        pct = round((target_score / target_total) * 100)
         
         st.markdown(f"""
         <div class='score-badge'>
-          <h3 style='margin:0 0 8px 0; color:#1e3a8a;'>採点結果（人間関係とコミュニケーション a前半）</h3>
-          <div style='font-size: 2.2rem; font-weight: bold; color: #1e3a8a;'>{score} / {total_q} 点</div>
-          <div style='font-size: 1.1rem; color: #475569;'>正答率: <strong>{pct}%</strong></div>
+          <h3 style='margin:0 0 8px 0; color:#1e3a8a;'>採点結果【{sec_info['tag']}】</h3>
+          <div style='font-size: 2.2rem; font-weight: bold; color: #1e3a8a;'>{target_score} / {target_total} 点</div>
+          <div style='font-size: 1.1rem; color: #475569;'>正答率: <strong>{pct}%</strong>（全70問中 {answered_count}問 解答済み）</div>
         </div>
         """, unsafe_allow_html=True)
         
-        if unanswered > 0:
-            st.warning(f"※ 未回答の問題が {unanswered} 問あります。")
+        if target_unanswered > 0:
+            st.warning(f"※ この範囲内に未回答の問題が {target_unanswered} 問あります。")
             
-        # 解説アコーディオン
-        with st.expander("📖 各問題の正解と解説を確認する"):
-            for q in QUESTIONS:
+        with st.expander("📖 各問題の解説を確認する"):
+            for q in target_questions:
                 st.markdown(f"**第 {q['id']} 問**")
                 st.markdown(f"・{q['exp']}", unsafe_allow_html=True)
                 st.markdown("---")
                 
-        # 提出用テキストの構築
         now = datetime.datetime.now()
         timestamp = now.strftime("%Y年%m月%d日 %H:%M:%S")
-        auth_raw = f"{s_class}_{s_id}_{s_name}_{score}_{total_q}_{timestamp}"
-        auth_code = f"VER-C2A70-{abs(hash(auth_raw)):X}-{now.strftime('%f')}"
+        auth_raw = f"{s_class}_{s_id}_{s_name}_{target_score}_{target_total}_{sec_info['tag']}_{timestamp}"
+        auth_code = f"VER-A70-{sec_info['tag']}-{abs(hash(auth_raw)):X}-{now.strftime('%f')}"
         
         details_block = "\n".join(detail_lines)
         report_text = (
             "==================================================\n"
-            "【課題提出用 成績レポート（全70問）】\n"
+            "【課題提出用 成績レポート】\n"
             "教科・単元　：人間関係とコミュニケーション a前半\n"
+            f"実施範囲　　：{sec_info['range_desc']} 【識別記号: {sec_info['tag']}】\n"
             f"クラス名（組）：{s_class.strip()}\n"
             f"学籍番号　　：{s_id.strip()}\n"
             f"名前（氏名）：{s_name.strip()}\n"
             f"実施日時　　：{timestamp}\n"
-            f"得点　　　　：{score} / {total_q} 点（正答率 {pct}%）\n"
+            f"得点　　　　：{target_score} / {target_total} 点（正答率 {pct}%）\n"
+            f"全体進捗　　：{answered_count} / 70 問 解答済み\n"
             f"改ざん防止用認証コード：{auth_code}\n"
             "==================================================\n"
-            "【全70問の解答記録】\n"
+            f"【{sec_info['tag']} 解答記録】\n"
             f"{details_block}\n"
             "==================================================\n"
             "以上を提出内容として記録しました。\n"
@@ -1126,7 +1214,7 @@ if st.button("📊 採点して提出用テキストを作成する", type="prim
 2. Google Classroom の回答欄・コメント欄にそのまま貼り付けて提出してください。
 """)
         
-        file_name = f"提出用_人間関係とコミュニケーションa前半_70問_{s_class.strip()}_{s_id.strip()}_{s_name.strip()}.txt"
+        file_name = f"提出用_人間関係とコミュニケーションa前半_[{sec_info['tag']}]_{s_class.strip()}_{s_id.strip()}_{s_name.strip()}.txt"
         st.download_button(
             label="📥 提出用テキストファイル（.txt）をダウンロード",
             data=report_text,
